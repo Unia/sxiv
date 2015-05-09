@@ -417,7 +417,7 @@ void img_render(img_t *img)
 	int sx, sy, sw, sh;
 	int dx, dy, dw, dh;
 	Imlib_Image bg;
-	unsigned long c;
+	XftColor c;
 
 	win = img->win;
 	img_fit(img);
@@ -486,7 +486,8 @@ void img_render(img_t *img)
 			imlib_image_put_back_data(data);
 		} else {
 			c = win->fullscreen ? win->fscol : win->bgcol;
-			imlib_context_set_color(c >> 16 & 0xFF, c >> 8 & 0xFF, c & 0xFF, 0xFF);
+			imlib_context_set_color(c.color.red & 0xFF, c.color.green & 0xFF,
+			                        c.color.blue & 0xFF, 0xFF);
 			imlib_image_fill_rectangle(0, 0, dw, dh);
 		}
 		imlib_blend_image_onto_image(img->im, 0, sx, sy, sw, sh, 0, 0, dw, dh);

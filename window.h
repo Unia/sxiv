@@ -21,6 +21,7 @@
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/Xft/Xft.h>
 
 #include "types.h"
 
@@ -59,9 +60,9 @@ typedef struct {
 	Window xwin;
 	win_env_t env;
 
-	unsigned long bgcol;
-	unsigned long fscol;
-	unsigned long selcol;
+	XftColor bgcol;
+	XftColor fscol;
+	XftColor selcol;
 
 	int x;
 	int y;
@@ -81,8 +82,8 @@ typedef struct {
 		unsigned int h;
 		win_bar_t l;
 		win_bar_t r;
-		unsigned long bgcol;
-		unsigned long fgcol;
+		XftColor bgcol;
+		XftColor fgcol;
 	} bar;
 } win_t;
 
@@ -99,7 +100,7 @@ void win_toggle_bar(win_t*);
 
 void win_clear(win_t*);
 void win_draw(win_t*);
-void win_draw_rect(win_t*, int, int, int, int, bool, int, unsigned long);
+void win_draw_rect(win_t*, int, int, int, int, bool, int, XftColor);
 
 int win_textwidth(const char*, unsigned int, bool);
 

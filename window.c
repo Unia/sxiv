@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <locale.h>
+#include <pango/pangoxft.h>
 #include <X11/cursorfont.h>
 #include <X11/Xatom.h>
 
@@ -42,13 +43,10 @@ static Cursor cwatch;
 static GC gc;
 
 static struct {
-	int ascent;
-	int descent;
-	XFontStruct *xfont;
-	XFontSet set;
+	XftDraw *drw;
+	PangoLayout *plo;
 } font;
 
-static int fontheight;
 static int barheight;
 
 Atom atoms[ATOM_COUNT];
@@ -56,50 +54,43 @@ Atom atoms[ATOM_COUNT];
 static Bool fs_support;
 static Bool fs_warned;
 
-void win_init_font(Display *dpy, const char *fontstr)
+void win_init_font(Display *dpy, int screen, const char *fontstr)
 {
-	int n;
-	char *def, **missing;
+	PangoFontMap *fontmap;
+	PangoContext *context;
+	PangoFontMetrics *metrics;
+	PangoFontDescription *desc;
+	int ascent, descent;
 
-	font.set = XCreateFontSet(dpy, fontstr, &missing, &n, &def);
-	if (missing)
-		XFreeStringList(missing);
-	if (font.set) {
-		XFontStruct **xfonts;
-		char **font_names;
+	fontmap = pango_xft_get_font_map(dpy, screen);
+	context = pango_font_map_create_context(fontmap);
+	desc = pango_font_description_from_string(fontstr);
 
-		font.ascent = font.descent = 0;
-		XExtentsOfFontSet(font.set);
-		n = XFontsOfFontSet(font.set, &xfonts, &font_names);
-		while (n--) {
-			font.ascent  = MAX(font.ascent, (*xfonts)->ascent);
-			font.descent = MAX(font.descent,(*xfonts)->descent);
-			xfonts++;
-		}
-	} else {
-		if ((font.xfont = XLoadQueryFont(dpy, fontstr)) == NULL &&
-		    (font.xfont = XLoadQueryFont(dpy, "fixed")) == NULL)
-		{
-			error(EXIT_FAILURE, 0, "Error loading font '%s'", fontstr);
-		}
-		font.ascent  = font.xfont->ascent;
-		font.descent = font.xfont->descent;
-	}
-	fontheight = font.ascent + font.descent;
-	barheight = fontheight + 2 * V_TEXT_PAD;
+	font.plo = pango_layout_new(context);
+	pango_layout_set_font_description(font.plo, desc);
+
+	metrics = pango_context_get_metrics(context, desc, NULL);
+	ascent = pango_font_metrics_get_ascent(metrics) / PANGO_SCALE;
+	descent = pango_font_metrics_get_descent(metrics) / PANGO_SCALE;
+	barheight = ascent + descent + 2 * V_TEXT_PAD;
+
+	g_object_unref(context);
+	pango_font_description_free(desc);
+	pango_font_metrics_unref(metrics);
 }
 
-unsigned long win_alloc_color(win_t *win, const char *name)
+XftColor win_alloc_color(win_t *win, const char *name)
 {
-	XColor col;
+	XftColor col;
 
-	if (XAllocNamedColor(win->env.dpy,
+	if (XftColorAllocName(win->env.dpy,
+	                     DefaultVisual(win->env.dpy, win->env.scr),
 	                     DefaultColormap(win->env.dpy, win->env.scr),
-	                     name, &col, &col) == 0)
+	                     name, &col) == 0)
 	{
 		error(EXIT_FAILURE, 0, "Error allocating color '%s'", name);
 	}
-	return col.pixel;
+	return col;
 }
 
 void win_check_wm_support(Display *dpy, Window root)
@@ -155,7 +146,7 @@ void win_init(win_t *win)
 	if (setlocale(LC_CTYPE, "") == NULL || XSupportsLocale() == 0)
 		error(0, 0, "No locale support");
 
-	win_init_font(e->dpy, BAR_FONT);
+	win_init_font(e->dpy, e->scr, BAR_FONT);
 
 	win->bgcol     = win_alloc_color(win, WIN_BG_COLOR);
 	win->fscol     = win_alloc_color(win, WIN_FS_COLOR);
@@ -295,9 +286,11 @@ void win_open(win_t *win)
 	win->buf.h = e->scrh;
 	win->buf.pm = XCreatePixmap(e->dpy, win->xwin,
 	                            win->buf.w, win->buf.h, e->depth);
-	XSetForeground(e->dpy, gc, fullscreen ? win->fscol : win->bgcol);
+	XSetForeground(e->dpy, gc, fullscreen ? win->fscol.pixel : win->bgcol.pixel);
 	XFillRectangle(e->dpy, win->buf.pm, gc, 0, 0, win->buf.w, win->buf.h);
 	XSetWindowBackgroundPixmap(e->dpy, win->xwin, win->buf.pm);
+	font.drw = XftDrawCreate(e->dpy, win->buf.pm, DefaultVisual(e->dpy, e->scr),
+			DefaultColormap(e->dpy, e->scr));
 
 	XMapWindow(e->dpy, win->xwin);
 	XFlush(e->dpy);
@@ -314,6 +307,9 @@ CLEANUP void win_close(win_t *win)
 	XFreeCursor(win->env.dpy, cwatch);
 
 	XFreeGC(win->env.dpy, gc);
+
+	g_object_unref(font.plo);
+	XftDrawDestroy(font.drw);
 
 	XDestroyWindow(win->env.dpy, win->xwin);
 	XCloseDisplay(win->env.dpy);
@@ -387,7 +383,7 @@ void win_clear(win_t *win)
 		win->buf.pm = XCreatePixmap(e->dpy, win->xwin,
 		                            win->buf.w, win->buf.h, e->depth);
 	}
-	XSetForeground(e->dpy, gc, win->fullscreen ? win->fscol : win->bgcol);
+	XSetForeground(e->dpy, gc, win->fullscreen ? win->fscol.pixel : win->bgcol.pixel);
 	XFillRectangle(e->dpy, win->buf.pm, gc, 0, 0, win->buf.w, win->buf.h);
 }
 
@@ -403,24 +399,23 @@ void win_draw_bar(win_t *win)
 		return;
 
 	e = &win->env;
-	y = win->h + font.ascent + V_TEXT_PAD;
+	y = win->h + V_TEXT_PAD;
 	w = win->w;
 
-	XSetForeground(e->dpy, gc, win->bar.bgcol);
+	XSetForeground(e->dpy, gc, win->bar.bgcol.pixel);
 	XFillRectangle(e->dpy, win->buf.pm, gc, 0, win->h, win->w, win->bar.h);
 
-	XSetForeground(e->dpy, gc, win->bar.fgcol);
-	XSetBackground(e->dpy, gc, win->bar.bgcol);
+	XSetForeground(e->dpy, gc, win->bar.fgcol.pixel);
+	XSetBackground(e->dpy, gc, win->bar.bgcol.pixel);
 
 	if ((len = strlen(r->buf)) > 0) {
 		if ((tw = win_textwidth(r->buf, len, true)) > w)
 			return;
 		x = win->w - tw + H_TEXT_PAD;
 		w -= tw;
-		if (font.set)
-			XmbDrawString(e->dpy, win->buf.pm, font.set, gc, x, y, r->buf, len);
-		else
-			XDrawString(e->dpy, win->buf.pm, gc, x, y, r->buf, len);
+		pango_layout_set_text(font.plo, r->buf, len);
+		pango_xft_render_layout(font.drw, &win->bar.fgcol, font.plo,
+				x * PANGO_SCALE, y * PANGO_SCALE);
 	}
 	if ((len = strlen(l->buf)) > 0) {
 		olen = len;
@@ -435,10 +430,9 @@ void win_draw_bar(win_t *win)
 				memcpy(l->buf + len - w, dots, w);
 			}
 			x = H_TEXT_PAD;
-			if (font.set)
-				XmbDrawString(e->dpy, win->buf.pm, font.set, gc, x, y, l->buf, len);
-			else
-				XDrawString(e->dpy, win->buf.pm, gc, x, y, l->buf, len);
+			pango_layout_set_text(font.plo, l->buf, len);
+			pango_xft_render_layout(font.drw, &win->bar.fgcol, font.plo,
+					x * PANGO_SCALE, y * PANGO_SCALE);
 			if (len != olen)
 			  memcpy(l->buf + len - w, rest, w);
 		}
@@ -456,12 +450,12 @@ void win_draw(win_t *win)
 }
 
 void win_draw_rect(win_t *win, int x, int y, int w, int h, bool fill, int lw,
-                   unsigned long col)
+                   XftColor col)
 {
 	XGCValues gcval;
 
 	gcval.line_width = lw;
-	gcval.foreground = col;
+	gcval.foreground = col.pixel;
 	XChangeGC(win->env.dpy, gc, GCForeground | GCLineWidth, &gcval);
 
 	if (fill)
@@ -472,15 +466,12 @@ void win_draw_rect(win_t *win, int x, int y, int w, int h, bool fill, int lw,
 
 int win_textwidth(const char *text, unsigned int len, bool with_padding)
 {
-	XRectangle r;
+	PangoRectangle r;
 	int padding = with_padding ? 2 * H_TEXT_PAD : 0;
 
-	if (font.set) {
-		XmbTextExtents(font.set, text, len, NULL, &r);
-		return r.width + padding;
-	} else {
-		return XTextWidth(font.xfont, text, len) + padding;
-	}
+	pango_layout_set_text(font.plo, text, len);
+	pango_layout_get_extents(font.plo, &r, NULL);
+	return (r.width / PANGO_SCALE) + padding;
 }
 
 void win_set_title(win_t *win, const char *title)

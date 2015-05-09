@@ -4,10 +4,10 @@ PREFIX    := /usr/local
 MANPREFIX := $(PREFIX)/share/man
 
 CC        ?= gcc
-CFLAGS    += -std=c99 -Wall -pedantic
+CFLAGS    += -std=c99 -Wall -pedantic `pkg-config --cflags pangoxft`
 CPPFLAGS  += -I$(PREFIX)/include -D_XOPEN_SOURCE=700
 LDFLAGS   += -L$(PREFIX)/lib
-LIBS      := -lX11 -lImlib2
+LIBS      := -lX11 -lImlib2 `pkg-config --libs pangoxft`
 
 # optional dependencies:
 # giflib: gif animations
