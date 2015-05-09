@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <locale.h>
+#include <pango/pangoxft.h>
 #include <X11/cursorfont.h>
 #include <X11/Xatom.h>
 
@@ -41,7 +42,7 @@ static Cursor chand;
 static Cursor cwatch;
 static GC gc;
 
-static XftFont *font;
+static PangoLayout *plo;
 static int fontheight;
 static int barheight;
 
@@ -52,10 +53,28 @@ static Bool fs_warned;
 
 void win_init_font(const win_env_t *e, const char *fontstr)
 {
-	if ((font = XftFontOpenName(e->dpy, e->scr, fontstr)) == NULL)
-		error(EXIT_FAILURE, 0, "Error loading font '%s'", fontstr);
-	fontheight = font->ascent + font->descent;
+	PangoFontMap *fontmap;
+	PangoContext *context;
+	PangoFontMetrics *metrics;
+	PangoFontDescription *desc;
+	int ascent, descent;
+
+	fontmap = pango_xft_get_font_map(e->dpy, e->scr);
+	context = pango_font_map_create_context(fontmap);
+	desc = pango_font_description_from_string(fontstr);
+
+	plo = pango_layout_new(context);
+	pango_layout_set_font_description(plo, desc);
+
+	metrics = pango_context_get_metrics(context, desc, NULL);
+	ascent = pango_font_metrics_get_ascent(metrics) / PANGO_SCALE;
+	descent = pango_font_metrics_get_descent(metrics) / PANGO_SCALE;
+	fontheight = ascent + descent;
 	barheight = fontheight + 2 * V_TEXT_PAD;
+
+	g_object_unref(context);
+	pango_font_description_free(desc);
+	pango_font_metrics_unref(metrics);
 }
 
 void win_alloc_color(const win_env_t *e, const char *name, XftColor *col)
@@ -204,7 +223,7 @@ void win_open(win_t *win)
 	                          e->depth, InputOutput, e->vis, 0, NULL);
 	if (win->xwin == None)
 		error(EXIT_FAILURE, 0, "Error creating X window");
-	
+
 	XSelectInput(e->dpy, win->xwin,
 	             ButtonReleaseMask | ButtonPressMask | KeyPressMask |
 	             PointerMotionMask | StructureNotifyMask);
@@ -281,6 +300,8 @@ CLEANUP void win_close(win_t *win)
 	XFreeCursor(win->env.dpy, cwatch);
 
 	XFreeGC(win->env.dpy, gc);
+
+	g_object_unref(plo);
 
 	XDestroyWindow(win->env.dpy, win->xwin);
 	XCloseDisplay(win->env.dpy);
@@ -371,7 +392,7 @@ void win_draw_bar(win_t *win)
 		return;
 
 	e = &win->env;
-	y = win->h + font->ascent + V_TEXT_PAD;
+	y = win->h + V_TEXT_PAD;
 	w = win->w;
 	d = XftDrawCreate(e->dpy, win->buf.pm, DefaultVisual(e->dpy, e->scr),
 	                  DefaultColormap(e->dpy, e->scr));
@@ -387,7 +408,9 @@ void win_draw_bar(win_t *win)
 			return;
 		x = win->w - tw + H_TEXT_PAD;
 		w -= tw;
-		XftDrawStringUtf8(d, &win->bar.fgcol, font, x, y, (XftChar8*)r->buf, len);
+		pango_layout_set_text(plo, r->buf, len);
+		pango_xft_render_layout(d, &win->bar.fgcol, plo,
+				x * PANGO_SCALE, y * PANGO_SCALE);
 	}
 	if ((len = strlen(l->buf)) > 0) {
 		olen = len;
@@ -402,7 +425,9 @@ void win_draw_bar(win_t *win)
 				memcpy(l->buf + len - w, dots, w);
 			}
 			x = H_TEXT_PAD;
-			XftDrawStringUtf8(d, &win->bar.fgcol, font, x, y, (XftChar8*)l->buf, len);
+			pango_layout_set_text(plo, l->buf, len);
+			pango_xft_render_layout(d, &win->bar.fgcol, plo,
+					x * PANGO_SCALE, y * PANGO_SCALE);
 			if (len != olen)
 			  memcpy(l->buf + len - w, rest, w);
 		}
@@ -437,10 +462,12 @@ void win_draw_rect(win_t *win, int x, int y, int w, int h, bool fill, int lw,
 
 int win_textwidth(const win_env_t *e, const char *text, unsigned int len, bool with_padding)
 {
-	XGlyphInfo ext;
+	PangoRectangle r;
+	int padding = with_padding ? 2 * H_TEXT_PAD : 0;
 
-	XftTextExtentsUtf8(e->dpy, font, (XftChar8*)text, len, &ext);
-	return ext.xOff + (with_padding ? 2 * H_TEXT_PAD : 0);
+	pango_layout_set_text(plo, text, len);
+	pango_layout_get_extents(plo, &r, NULL);
+	return (r.width / PANGO_SCALE) + padding;
 }
 
 void win_set_title(win_t *win, const char *title)
