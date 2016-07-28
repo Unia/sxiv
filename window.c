@@ -148,10 +148,10 @@ void win_init(win_t *win)
 
 	win_init_font(e->dpy, e->scr, BAR_FONT);
 
-	win->bgcol     = win_alloc_color(win, WIN_BG_COLOR);
-	win->fscol     = win_alloc_color(win, WIN_FS_COLOR);
-	win->selcol    = win_alloc_color(win, SEL_COLOR);
-	win->bar.bgcol = win_alloc_color(win, BAR_BG_COLOR);
+	win->bgcol     = win_alloc_color(win, WIN_BG_COLOR).pixel;
+	win->fscol     = win_alloc_color(win, WIN_FS_COLOR).pixel;
+	win->selcol    = win_alloc_color(win, SEL_COLOR).pixel;
+	win->bar.bgcol = win_alloc_color(win, BAR_BG_COLOR).pixel;
 	win->bar.fgcol = win_alloc_color(win, BAR_FG_COLOR);
 
 	win->bar.l.size = BAR_L_LEN;
@@ -286,7 +286,7 @@ void win_open(win_t *win)
 	win->buf.h = e->scrh;
 	win->buf.pm = XCreatePixmap(e->dpy, win->xwin,
 	                            win->buf.w, win->buf.h, e->depth);
-	XSetForeground(e->dpy, gc, fullscreen ? win->fscol.pixel : win->bgcol.pixel);
+	XSetForeground(e->dpy, gc, fullscreen ? win->fscol : win->bgcol);
 	XFillRectangle(e->dpy, win->buf.pm, gc, 0, 0, win->buf.w, win->buf.h);
 	XSetWindowBackgroundPixmap(e->dpy, win->xwin, win->buf.pm);
 	font.drw = XftDrawCreate(e->dpy, win->buf.pm, DefaultVisual(e->dpy, e->scr),
@@ -383,7 +383,7 @@ void win_clear(win_t *win)
 		win->buf.pm = XCreatePixmap(e->dpy, win->xwin,
 		                            win->buf.w, win->buf.h, e->depth);
 	}
-	XSetForeground(e->dpy, gc, win->fullscreen ? win->fscol.pixel : win->bgcol.pixel);
+	XSetForeground(e->dpy, gc, win->fullscreen ? win->fscol : win->bgcol);
 	XFillRectangle(e->dpy, win->buf.pm, gc, 0, 0, win->buf.w, win->buf.h);
 }
 
@@ -402,11 +402,11 @@ void win_draw_bar(win_t *win)
 	y = win->h + V_TEXT_PAD;
 	w = win->w;
 
-	XSetForeground(e->dpy, gc, win->bar.bgcol.pixel);
+	XSetForeground(e->dpy, gc, win->bar.bgcol);
 	XFillRectangle(e->dpy, win->buf.pm, gc, 0, win->h, win->w, win->bar.h);
 
 	XSetForeground(e->dpy, gc, win->bar.fgcol.pixel);
-	XSetBackground(e->dpy, gc, win->bar.bgcol.pixel);
+	XSetBackground(e->dpy, gc, win->bar.bgcol);
 
 	if ((len = strlen(r->buf)) > 0) {
 		if ((tw = win_textwidth(r->buf, len, true)) > w)
@@ -450,12 +450,12 @@ void win_draw(win_t *win)
 }
 
 void win_draw_rect(win_t *win, int x, int y, int w, int h, bool fill, int lw,
-                   XftColor col)
+                   unsigned long col)
 {
 	XGCValues gcval;
 
 	gcval.line_width = lw;
-	gcval.foreground = col.pixel;
+	gcval.foreground = col;
 	XChangeGC(win->env.dpy, gc, GCForeground | GCLineWidth, &gcval);
 
 	if (fill)

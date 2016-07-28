@@ -60,9 +60,9 @@ typedef struct {
 	Window xwin;
 	win_env_t env;
 
-	XftColor bgcol;
-	XftColor fscol;
-	XftColor selcol;
+	unsigned long bgcol;
+	unsigned long fscol;
+	unsigned long selcol;
 
 	int x;
 	int y;
@@ -82,7 +82,7 @@ typedef struct {
 		unsigned int h;
 		win_bar_t l;
 		win_bar_t r;
-		XftColor bgcol;
+		unsigned long bgcol;
 		XftColor fgcol;
 	} bar;
 } win_t;
@@ -100,7 +100,7 @@ void win_toggle_bar(win_t*);
 
 void win_clear(win_t*);
 void win_draw(win_t*);
-void win_draw_rect(win_t*, int, int, int, int, bool, int, XftColor);
+void win_draw_rect(win_t*, int, int, int, int, bool, int, unsigned long);
 
 int win_textwidth(const char*, unsigned int, bool);
 
