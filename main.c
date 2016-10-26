@@ -372,7 +372,7 @@ void update_info(void)
 			bar_put(r, "%ds | ", img.ss.delay);
 		if (img.gamma != 0)
 			bar_put(r, "G%+d | ", img.gamma);
-		bar_put(r, "%3d%% | ", (int) (img.zoom * 100.0));
+		bar_put(r, "%d%% | ", (int) (img.zoom * 100.0));
 		if (img.multi.cnt > 0) {
 			for (fn = 0, i = img.multi.cnt; i > 0; fn++, i /= 10);
 			bar_put(r, "%0*d/%d | ", fn, img.multi.sel + 1, img.multi.cnt);
